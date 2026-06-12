@@ -5,6 +5,88 @@
 #include "i18n.hpp"
 #include "utils.hpp"
 
+#ifdef TH06_WASM_NO_AUDIO
+
+SoundPlayer g_SoundPlayer;
+
+SoundPlayer::SoundPlayer()
+{
+}
+
+ZunResult SoundPlayer::InitializeDSound()
+{
+    return ZUN_SUCCESS;
+}
+
+ZunResult SoundPlayer::Release(void)
+{
+    return ZUN_SUCCESS;
+}
+
+void SoundPlayer::StopBGM()
+{
+}
+
+void SoundPlayer::FadeOut(f32 seconds)
+{
+    (void)seconds;
+}
+
+ZunResult SoundPlayer::LoadWav(const char *path)
+{
+    (void)path;
+    return ZUN_ERROR;
+}
+
+ZunResult SoundPlayer::LoadPos(const char *path)
+{
+    (void)path;
+    return ZUN_ERROR;
+}
+
+ZunResult SoundPlayer::InitSoundBuffers()
+{
+    return ZUN_SUCCESS;
+}
+
+ZunResult SoundPlayer::LoadSound(i32 idx, const char *path, f32 volumeMultiplier)
+{
+    (void)idx;
+    (void)path;
+    (void)volumeMultiplier;
+    return ZUN_ERROR;
+}
+
+ZunResult SoundPlayer::PlayBGM(bool isLooping)
+{
+    (void)isLooping;
+    return ZUN_ERROR;
+}
+
+void SoundPlayer::PlaySounds()
+{
+}
+
+void SoundPlayer::PlaySoundByIdx(SoundIdx idx)
+{
+    (void)idx;
+}
+
+void SoundPlayer::MixAudio(u32 samples)
+{
+    (void)samples;
+}
+
+void SoundPlayer::QueueMainLoopAudio()
+{
+}
+
+void SoundPlayer::BackgroundMusicPlayerThread()
+{
+}
+
+#else
+
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_timer.h>
 #include <array>
@@ -74,7 +156,11 @@ ZunResult SoundPlayer::InitializeDSound()
         goto fail;
     }
 
+    SDL_PauseAudioDevice(this->audioDev, 0);
+
+#ifndef TH06_WASM_MAINLOOP_AUDIO
     this->backgroundMusicThreadHandle = std::thread(&SoundPlayer::BackgroundMusicPlayerThread, this);
+#endif
 
     g_GameErrorContext.Log(TH_DBG_SOUNDPLAYER_INIT_SUCCESS);
     return ZUN_SUCCESS;
@@ -86,9 +172,14 @@ fail:
 
 ZunResult SoundPlayer::Release(void)
 {
+#ifndef TH06_WASM_MAINLOOP_AUDIO
     this->terminateFlag = true;
-    this->backgroundMusicThreadHandle.join();
+    if (this->backgroundMusicThreadHandle.joinable())
+    {
+        this->backgroundMusicThreadHandle.join();
+    }
     this->terminateFlag = false;
+#endif
 
     StopBGM();
 
@@ -154,7 +245,7 @@ ZunResult SoundPlayer::LoadWav(const char *path)
 
     utils::DebugPrint2("load BGM\n");
 
-    fileStream = SDL_RWFromFile(path, "r");
+    fileStream = SDL_RWFromFile(path, "rb");
 
     if (fileStream == NULL)
     {
@@ -431,6 +522,9 @@ ZunResult SoundPlayer::PlayBGM(bool isLooping)
     //    }
     utils::DebugPrint2("comp\n");
     this->isLooping = isLooping;
+#ifdef TH06_WASM_MAINLOOP_AUDIO
+    this->QueueMainLoopAudio();
+#endif
     return ZUN_SUCCESS;
 }
 
@@ -466,6 +560,10 @@ void SoundPlayer::PlaySounds()
     }
 
     soundBufMutex.unlock();
+
+#ifdef TH06_WASM_MAINLOOP_AUDIO
+    this->QueueMainLoopAudio();
+#endif
 }
 
 void SoundPlayer::PlaySoundByIdx(SoundIdx idx)
@@ -550,9 +648,10 @@ void SoundPlayer::MixAudio(u32 samples)
 
             for (u32 j = 0; j < samplesToMix; j++)
             {
-                mixBuffer[samplesMixed + j * 2] +=
+                const u32 dstSample = (samplesMixed + j) * 2;
+                mixBuffer[dstSample] +=
                     ((i16)SDL_ReadLE16(this->backgroundMusic.srcWav.fileStream)) * fadeoutMult;
-                mixBuffer[samplesMixed + j * 2 + 1] +=
+                mixBuffer[dstSample + 1] +=
                     ((i16)SDL_ReadLE16(this->backgroundMusic.srcWav.fileStream)) * fadeoutMult;
             }
 
@@ -613,11 +712,33 @@ void SoundPlayer::MixAudio(u32 samples)
     SDL_QueueAudio(this->audioDev, finalBuffer.data(), samples * 2);
 }
 
+#ifdef TH06_WASM_MAINLOOP_AUDIO
+void SoundPlayer::QueueMainLoopAudio()
+{
+    if (this->audioDev == 0 || !g_Supervisor.cfg.playSounds)
+    {
+        return;
+    }
+
+    constexpr u32 framesPerChunk = 1024;
+    constexpr u32 bytesPerFrame = BACKGROUND_MUSIC_WAV_BLOCK_ALIGN;
+    constexpr u32 targetQueuedBytes = framesPerChunk * bytesPerFrame * 3;
+
+    while (SDL_GetQueuedAudioSize(this->audioDev) < targetQueuedBytes)
+    {
+        this->MixAudio(framesPerChunk * BACKGROUND_MUSIC_WAV_NUM_CHANNELS);
+    }
+}
+#endif
+
 // EoSD originally just used this function to manage the streaming of the music WAV file.
 //   We also use it to mix and queue audio, since we have to do that manually and doing it
 //   in a thread keeps sound running continuously, even if the main thread runs into lag
 void SoundPlayer::BackgroundMusicPlayerThread()
 {
+#ifdef TH06_WASM_MAINLOOP_AUDIO
+    return;
+#else
     SDL_PauseAudioDevice(this->audioDev, 0);
 
     u32 latencyLimit = 14'700; // ~5 frames
@@ -658,4 +779,7 @@ void SoundPlayer::BackgroundMusicPlayerThread()
 
         SDL_Delay(5);
     }
+#endif
 }
+
+#endif

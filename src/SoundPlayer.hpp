@@ -4,9 +4,14 @@
 #include "inttypes.hpp"
 #include <SDL2/SDL_audio.h>
 #include <SDL2/SDL_rwops.h>
+
+#ifndef TH06_WASM_NO_AUDIO
 #include <atomic>
 #include <mutex>
+#ifndef TH06_WASM_MAINLOOP_AUDIO
 #include <thread>
+#endif
+#endif
 
 enum SoundIdx
 {
@@ -96,15 +101,20 @@ struct SoundPlayer
 
     void BackgroundMusicPlayerThread();
     void MixAudio(u32 samples);
+    void QueueMainLoopAudio();
 
+#ifndef TH06_WASM_NO_AUDIO
     SoundData soundBuffers[128];
     std::mutex soundBufMutex;
     SDL_AudioDeviceID audioDev;
+#ifndef TH06_WASM_MAINLOOP_AUDIO
     std::thread backgroundMusicThreadHandle;
+#endif
     std::atomic_bool terminateFlag;
     i32 soundBuffersToPlay[3];
     MusicStream backgroundMusic;
     bool isLooping;
+#endif
 };
 
 extern SoundPlayer g_SoundPlayer;

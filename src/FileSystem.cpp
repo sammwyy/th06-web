@@ -104,7 +104,11 @@ u8 *FileSystem::OpenPath(const char *filepath, int isExternalResource)
         }
         if (entryIdx < 0)
         {
-            return NULL;
+            // Browser builds can receive either the original DAT archives or
+            // an already-extracted data directory from the folder picker.
+            // Falling through keeps the original PBG3 path first, but allows
+            // loose files like data/text.anm when no archive entry exists.
+            entryIdx = -1;
         }
     }
     if (entryIdx >= 0)

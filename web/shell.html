@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TH06 Web</title>
+  <style>
+    :root {
+      color-scheme: light;
+      background: #d8d0bd;
+      color: #231815;
+      font-family: "MS Mincho", "Yu Mincho", "Hiragino Mincho ProN", serif;
+      --paper: #f5f0e6;
+      --line: #7f7463;
+      --ink: #231815;
+      --muted: #6d6256;
+      --red: #8f1d20;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    canvas {
+      position: fixed !important;
+      inset: 0 !important;
+      width: min(100vw, 133.333333vh) !important;
+      height: min(100vh, 75vw) !important;
+      margin: auto !important;
+      display: block !important;
+      image-rendering: pixelated;
+      background: #000;
+      outline: none;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #d8d0bd;
+      transition: opacity 120ms linear;
+    }
+
+    #overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #panel {
+      width: min(440px, calc(100vw - 42px));
+      min-height: 420px;
+      box-sizing: border-box;
+      padding: 22px 24px 24px;
+      text-align: center;
+      display: grid;
+      grid-template-rows: 112px auto 44px 42px 116px;
+      gap: 10px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: 7px 7px 0 rgba(35, 24, 21, 0.18);
+    }
+
+    #logoBox {
+      width: 220px;
+      height: 96px;
+      justify-self: center;
+      display: grid;
+      place-items: center;
+      border-bottom: 1px solid #c8bfac;
+    }
+
+    #logo {
+      max-width: 220px;
+      max-height: 88px;
+      image-rendering: auto;
+    }
+
+    h1 {
+      margin: 0;
+      align-self: center;
+      font-size: 20px;
+      font-weight: normal;
+      line-height: 1.25;
+      letter-spacing: 0.12em;
+      color: var(--ink);
+    }
+
+    #subtitle {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font: 11px/1.2 "Times New Roman", serif;
+      letter-spacing: 0.08em;
+    }
+
+    p {
+      margin: 0 auto;
+      align-self: center;
+      min-height: 0;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    #actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-self: center;
+    }
+
+    button,
+    label {
+      min-width: 118px;
+      box-sizing: border-box;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      padding: 8px 12px;
+      background: #eee7d8;
+      color: var(--ink);
+      font-family: "MS Gothic", "Osaka-Mono", monospace;
+      font-weight: normal;
+      font-size: 12px;
+      letter-spacing: 0;
+      cursor: pointer;
+    }
+
+    button:not(:disabled):hover,
+    label:hover {
+      background: #fffaf0;
+      color: var(--red);
+    }
+
+    button:disabled {
+      opacity: 0.42;
+      cursor: not-allowed;
+    }
+
+    input {
+      display: none;
+    }
+
+    #status {
+      height: 116px;
+      box-sizing: border-box;
+      padding: 9px 10px;
+      border: 1px solid #b8ad99;
+      background: #e9e2d4;
+      overflow: auto;
+      white-space: pre-wrap;
+      text-align: left;
+      color: #554a40;
+      font: 12px/1.45 "MS Gothic", "Courier New", monospace;
+      scrollbar-width: thin;
+    }
+
+    body.dragging #overlay {
+      background: #cec3ad;
+    }
+
+    @media (max-height: 560px) {
+      #panel {
+        min-height: 360px;
+        grid-template-rows: 72px auto 36px 36px 82px;
+        gap: 8px;
+        padding: 16px 18px 18px;
+      }
+
+      #logoBox {
+        width: 180px;
+        height: 64px;
+      }
+
+      #logo {
+        max-width: 180px;
+        max-height: 58px;
+      }
+
+      #status {
+        height: 82px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="canvas" width="640" height="480" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+  <div id="overlay">
+    <section id="panel" aria-live="polite">
+      <div id="logoBox">
+        <img id="logo" src="logo.png" alt="Touhou Koumakyou">
+      </div>
+      <p id="prompt">Select folder or drag the game folder here.</p>
+      <div id="actions">
+        <label>
+          Select Folder
+          <input id="folderInput" type="file" webkitdirectory directory multiple>
+        </label>
+        <button id="startButton" disabled>Start</button>
+      </div>
+      <div id="status">Waiting for WASM runtime...</div>
+    </section>
+  </div>
+
+  <script>
+    const overlay = document.getElementById("overlay");
+    const statusEl = document.getElementById("status");
+    const startButton = document.getElementById("startButton");
+    const folderInput = document.getElementById("folderInput");
+    const promptEl = document.getElementById("prompt");
+
+    let runtimeReady = false;
+    let filesReady = false;
+    let gameStarted = false;
+    let statusLines = [];
+
+    function appendStatus(message) {
+      if (!message) {
+        return;
+      }
+
+      statusLines.push(String(message));
+      if (statusLines.length > 12) {
+        statusLines = statusLines.slice(statusLines.length - 12);
+      }
+      statusEl.textContent = statusLines.join("\n");
+      statusEl.scrollTop = statusEl.scrollHeight;
+    }
+
+    function setStatus(message) {
+      appendStatus(message);
+    }
+
+    function fitCanvas() {
+      if (!Module || !Module.canvas) {
+        return;
+      }
+
+      const scale = Math.min(window.innerWidth / 640, window.innerHeight / 480);
+      Module.canvas.style.setProperty("position", "fixed", "important");
+      Module.canvas.style.setProperty("inset", "0", "important");
+      Module.canvas.style.setProperty("width", `${Math.floor(640 * scale)}px`, "important");
+      Module.canvas.style.setProperty("height", `${Math.floor(480 * scale)}px`, "important");
+      Module.canvas.style.setProperty("margin", "auto", "important");
+    }
+
+    function keepCanvasFitted() {
+      fitCanvas();
+      requestAnimationFrame(fitCanvas);
+      setTimeout(fitCanvas, 100);
+      setTimeout(fitCanvas, 500);
+    }
+
+    function resumeAudio() {
+      const context = Module.SDL2 && Module.SDL2.audioContext;
+      if (context && context.state === "suspended") {
+        context.resume().catch(() => { });
+      }
+    }
+
+    function updateStartButton() {
+      startButton.disabled = !(runtimeReady && filesReady) || gameStarted;
+    }
+
+    function normalizePath(path) {
+      return path.replaceAll("\\", "/").replace(/^\/+/, "").split("/").filter(Boolean).join("/");
+    }
+
+    function mkdirFor(path) {
+      const parts = path.split("/");
+      parts.pop();
+      if (parts.length > 0) {
+        Module.FS.mkdirTree(parts.join("/"));
+      }
+    }
+
+    function canonicalGamePath(path) {
+      const normalized = normalizePath(path);
+      const parts = normalized.split("/");
+      if (parts.length <= 1) {
+        return normalized;
+      }
+
+      const first = parts[0].toLowerCase();
+      if (first === "data" || first === "bgm" || first === "replay") {
+        return normalized;
+      }
+
+      return parts.slice(1).join("/");
+    }
+
+    function aliasesFor(path) {
+      const aliases = new Set();
+      const parts = path.split("/");
+      const basename = parts[parts.length - 1];
+      const upper = basename.toUpperCase();
+      const lowerPath = path.toLowerCase();
+
+      if (lowerPath !== path && (lowerPath.startsWith("data/") || lowerPath.startsWith("bgm/"))) {
+        aliases.add(lowerPath);
+      }
+
+      const datAliases = [
+        [/^(?:KOUMAKYO_)?IN\.DAT$/, "紅魔郷IN.DAT"],
+        [/^(?:KOUMAKYO_)?MD\.DAT$/, "紅魔郷MD.DAT"],
+        [/^(?:KOUMAKYO_)?ST\.DAT$/, "紅魔郷ST.DAT"],
+        [/^(?:KOUMAKYO_)?CM\.DAT$/, "紅魔郷CM.DAT"],
+        [/^(?:KOUMAKYO_)?ED\.DAT$/, "紅魔郷ED.DAT"],
+        [/^(?:KOUMAKYO_)?TL\.DAT$/, "紅魔郷TL.DAT"],
+        [/^TH06\.CFG$/, "東方紅魔郷.cfg"],
+        [/^MSGOTHIC\.TTC$/, "msgothic.ttc"],
+      ];
+
+      for (const [pattern, alias] of datAliases) {
+        if (pattern.test(upper)) {
+          aliases.add(alias);
+        }
+      }
+
+      return aliases;
+    }
+
+    function writeFileOnce(path, bytes, writtenPaths) {
+      if (!path || writtenPaths.has(path)) {
+        return;
+      }
+
+      mkdirFor(path);
+      Module.FS.writeFile(path, bytes);
+      writtenPaths.add(path);
+    }
+
+    function writeVirtualFile(path, bytes) {
+      const canonical = canonicalGamePath(path);
+      const writtenPaths = new Set();
+
+      writeFileOnce(canonical, bytes, writtenPaths);
+      for (const alias of aliasesFor(canonical)) {
+        writeFileOnce(alias, bytes, writtenPaths);
+      }
+    }
+
+    async function writeBrowserFiles(files) {
+      let count = 0;
+
+      filesReady = false;
+      updateStartButton();
+      promptEl.textContent = "Loading files...";
+      appendStatus(`Loading ${files.length} browser files...`);
+
+      for (const file of files) {
+        const relPath = file.webkitRelativePath || file.relativePath || file.name;
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        writeVirtualFile(relPath, bytes);
+        count += 1;
+        if ((count % 20) === 0) {
+          appendStatus(`Loaded ${count} files...`);
+          await new Promise(requestAnimationFrame);
+        }
+      }
+
+      filesReady = count > 0;
+      promptEl.textContent = filesReady ? "Folder loaded. Start when ready." : "Select folder or drag the game folder here.";
+      appendStatus(filesReady ? `Loaded ${count} files. Ready.` : "No files loaded.");
+      updateStartButton();
+    }
+
+    async function readEntry(entry, prefix = "") {
+      if (entry.isFile) {
+        return await new Promise((resolve, reject) => {
+          entry.file(file => {
+            file.relativePath = normalizePath(`${prefix}/${file.name}`);
+            resolve([file]);
+          }, reject);
+        });
+      }
+
+      if (!entry.isDirectory) {
+        return [];
+      }
+
+      const reader = entry.createReader();
+      const children = [];
+      while (true) {
+        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        if (batch.length === 0) {
+          break;
+        }
+        children.push(...batch);
+      }
+
+      const files = [];
+      for (const child of children) {
+        files.push(...await readEntry(child, normalizePath(`${prefix}/${entry.name}`)));
+      }
+      return files;
+    }
+
+    folderInput.addEventListener("change", async event => {
+      await writeBrowserFiles([...event.target.files]);
+    });
+
+    window.addEventListener("dragenter", event => {
+      event.preventDefault();
+      document.body.classList.add("dragging");
+    });
+
+    window.addEventListener("dragover", event => {
+      event.preventDefault();
+    });
+
+    window.addEventListener("dragleave", event => {
+      if (event.relatedTarget === null) {
+        document.body.classList.remove("dragging");
+      }
+    });
+
+    window.addEventListener("drop", async event => {
+      event.preventDefault();
+      document.body.classList.remove("dragging");
+
+      const entries = [...event.dataTransfer.items]
+        .map(item => item.webkitGetAsEntry && item.webkitGetAsEntry())
+        .filter(Boolean);
+      const files = [];
+      for (const entry of entries) {
+        files.push(...await readEntry(entry));
+      }
+      await writeBrowserFiles(files);
+    });
+
+    window.addEventListener("resize", fitCanvas);
+    window.addEventListener("fullscreenchange", keepCanvasFitted);
+    window.addEventListener("pointerdown", resumeAudio);
+
+    startButton.addEventListener("click", () => {
+      if (gameStarted) {
+        return;
+      }
+
+      gameStarted = true;
+      updateStartButton();
+      appendStatus("Starting...");
+      overlay.classList.add("hidden");
+      Module.canvas.focus();
+      resumeAudio();
+      Module.callMain([]);
+      resumeAudio();
+      keepCanvasFitted();
+    });
+
+    var Module = {
+      noInitialRun: true,
+      canvas: document.getElementById("canvas"),
+      print: text => appendStatus(String(text)),
+      printErr: text => console.error(text),
+      setStatus,
+      onRuntimeInitialized() {
+        runtimeReady = true;
+        fitCanvas();
+        appendStatus("Runtime ready.");
+        updateStartButton();
+      }
+    };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+
+</html>
