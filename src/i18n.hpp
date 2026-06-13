@@ -314,4 +314,5 @@
 #define TH_FONT_NAME "ＭＳ ゴシック"
 #define TH_PRIMARY_FONT_FILENAME "msgothic.ttc"
 #define TH_FALLBACK_FONT_FILENAME "NotoSansJP-Regular.ttf"
-#define TH_BUNDLED_FONT_FILENAME "NotoSans-Regular.ttf"
+#define TH_PUBLIC_FONT_FILENAME "/NotoSansJP-Regular.ttf"
+#define TH_BUNDLED_FONT_FILENAME "/NotoSans-Regular.ttf"

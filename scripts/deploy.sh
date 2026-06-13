@@ -48,7 +48,7 @@ if [[ "$skip_build" == "0" ]]; then
   fi
 fi
 
-for artifact in index.html index.js index.wasm logo.png; do
+for artifact in index.html index.js index.wasm logo.png NotoSansJP-Regular.ttf; do
   if [[ ! -f "$out_dir/$artifact" ]]; then
     echo "Missing deploy artifact: $out_dir/$artifact" >&2
     exit 1
@@ -83,6 +83,7 @@ cp "$out_dir/index.html" "$worktree/index.html"
 cp "$out_dir/index.js" "$worktree/index.js"
 cp "$out_dir/index.wasm" "$worktree/index.wasm"
 cp "$out_dir/logo.png" "$worktree/logo.png"
+cp "$out_dir/NotoSansJP-Regular.ttf" "$worktree/NotoSansJP-Regular.ttf"
 touch "$worktree/.nojekyll"
 
 git -C "$worktree" add -A

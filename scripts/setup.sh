@@ -37,8 +37,8 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ ! -f NotoSans-Regular.ttf ]]; then
-  echo "Missing NotoSans-Regular.ttf at repo root." >&2
+if [[ ! -f public/NotoSansJP-Regular.ttf ]]; then
+  echo "Missing public/NotoSansJP-Regular.ttf." >&2
   exit 1
 fi
 

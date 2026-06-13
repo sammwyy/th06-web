@@ -12,6 +12,28 @@
 
 static TTF_Font *g_Font;
 
+static TTF_Font *OpenFontFirstAvailable(int size)
+{
+    const char *paths[] = {
+        TH_PRIMARY_FONT_FILENAME,
+        TH_PUBLIC_FONT_FILENAME,
+        TH_FALLBACK_FONT_FILENAME,
+        TH_BUNDLED_FONT_FILENAME,
+    };
+
+    for (const char *path : paths)
+    {
+        TTF_Font *font = TTF_OpenFont(path, size);
+        if (font != NULL)
+        {
+            return font;
+        }
+        std::printf("%s: %s\n", path, TTF_GetError());
+    }
+
+    return NULL;
+}
+
 TextHelper::TextHelper()
 {
     //    this->format = (D3DFORMAT)-1;
@@ -37,12 +59,9 @@ ZunResult TextHelper::CreateTextBuffer()
 
     // Primary font is MSゴシック, which is nonfree and has to be taken from a Windows install
     // Fallback is Noto Sans Regular (JP) which is redistributable
-    if ((g_Font = TTF_OpenFont(TH_PRIMARY_FONT_FILENAME, 10), g_Font == NULL) &&
-        (std::printf("%s\n", TTF_GetError()), g_Font = TTF_OpenFont(TH_FALLBACK_FONT_FILENAME, 10), g_Font == NULL) &&
-        (std::printf("%s\n", TTF_GetError()), g_Font = TTF_OpenFont(TH_BUNDLED_FONT_FILENAME, 10), g_Font == NULL))
+    g_Font = OpenFontFirstAvailable(10);
+    if (g_Font == NULL)
     {
-        std::printf("%s\n", TTF_GetError());
-
         g_GameErrorContext.Fatal(TH_ERR_FONTS_NOT_FOUND);
         return ZUN_ERROR;
     }

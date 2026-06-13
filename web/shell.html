@@ -220,6 +220,7 @@
     const promptEl = document.getElementById("prompt");
 
     let runtimeReady = false;
+    let fontReady = false;
     let filesReady = false;
     let gameStarted = false;
     let statusLines = [];
@@ -268,8 +269,22 @@
       }
     }
 
+    async function loadPublicFont() {
+      appendStatus("Loading font...");
+      const response = await fetch("NotoSansJP-Regular.ttf", { cache: "force-cache" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      Module.FS.writeFile("/NotoSansJP-Regular.ttf", bytes);
+      fontReady = true;
+      appendStatus("Font ready.");
+      updateStartButton();
+    }
+
     function updateStartButton() {
-      startButton.disabled = !(runtimeReady && filesReady) || gameStarted;
+      startButton.disabled = !(runtimeReady && fontReady && filesReady) || gameStarted;
     }
 
     function normalizePath(path) {
@@ -470,6 +485,10 @@
         fitCanvas();
         appendStatus("Runtime ready.");
         updateStartButton();
+        loadPublicFont().catch(error => {
+          appendStatus(`Font failed: ${error.message}`);
+          updateStartButton();
+        });
       }
     };
   </script>
